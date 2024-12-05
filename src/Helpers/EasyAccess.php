@@ -106,4 +106,35 @@ class EasyAccess implements \ArrayAccess, \Countable
     {
         return isset($this->{$offset}) ? $this->{$offset} : null;
     }
+
+    /**
+     * Splits the message string and returns a structured array with project ID and messages.
+     *
+     * @param string $message
+     * @return array
+     */
+    public function formatNotificationResponse($message)
+    {
+        // Split the string by "projects/"
+        $result = explode("projects/", $message);
+
+        if (count($result) === 2) {
+            // Extract project ID
+            $projectPart = explode("/", $result[1]);
+            $projectId = $projectPart[0];
+
+            // Extract the messages part after the project ID
+            $messagesPart = explode("messages/", $result[1]);
+            if (count($messagesPart) === 2) {
+                // Further split the messages part by colon and percent
+                $messages = explode("%", $messagesPart[1]);
+                return [
+                    'project' => $projectId,
+                    'messages' => $messages
+                ];
+            }
+        }
+
+        return null; // Return null if the structure doesn't match
+    }
 }

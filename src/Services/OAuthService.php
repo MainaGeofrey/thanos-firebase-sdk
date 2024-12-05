@@ -7,7 +7,6 @@ use Firebase\Constants\ApiConstants;
 use Firebase\Exceptions\FirebaseException;
 use Firebase\Helpers\Cached;
 use Firebase\Helpers\Crypt;
-use Firebase\Helpers\Signature;
 use Firebase\Resources\CurlResource;
 
 class OAuthService
@@ -19,23 +18,15 @@ class OAuthService
     private $config;
     private $payload;
     private $curl;
-    private $signature;
 
     /**
      * @param Config $config
      * @param CurlResource $curl
-     * @param Signature $signature
      */
-    public function __construct($config, $curl, $signature)
+    public function __construct(Config $config, CurlResource $curl)
     {
         $this->config = $config;
-
-        $this->payload = $this->config->getCredentials() + [
-            'grant_type' => 'client_credentials',
-        ];
-
         $this->curl = $curl;
-        $this->signature = $signature;
     }
 
     /**
@@ -45,17 +36,23 @@ class OAuthService
     {
         $retryCount = 0;
 
-        $cacheName = self::CACHE_NAME . '_' . hash('sha256', $this->config->getCredentials(true));
+        $cacheName = self::CACHE_NAME . '_' . hash('sha256', json_encode($this->config->getConfig()));
 
         while ($retryCount < self::RETRY_LIMIT) {
             try {
-               // Cached::clearCache();
                 $token = Cached::get(function () {
+                    $jwt = $this->generateJWT();
+
+                    // Prepare the payload with the JWT as the 'assertion' parameter
+                    $payload = [
+                        'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                        'assertion' => $jwt
+                    ];
+
+                    // Send the request to get the access token
                     $response = $this->curl
-                        ->setHeaders([
-                            'thanos-signature: ' . $this->signature->getSignature($this->payload),
-                        ])
-                        ->post($this->config->getUrl() . ApiConstants::TOKEN_SLUG, http_build_query($this->payload));
+                        ->setHeaders([])
+                        ->post($this->config->get('token_uri'), http_build_query($payload));
 
                     if (!$response || $this->curl->code != 200) {
                         throw new FirebaseException('Access token generation failed, response: ' . $response);
@@ -67,15 +64,15 @@ class OAuthService
                         throw new FirebaseException('Failed to parse access token response: ' . json_last_error_msg());
                     }
 
-                    if (!isset($response['data']['access_token'])) {
+                    if (!isset($response['access_token'])) {
                         throw new FirebaseException('Access token not found in response');
                     }
 
-                    return Crypt::encrypt($response['data']['access_token'], $this->getEncryptionKey());
+                    return Crypt::encrypt($response['access_token'], $this->getEncryptionKey());
                 }, $cacheName);
 
                 return Crypt::decrypt($token, $this->getEncryptionKey());
-            } catch (\Exception $e) { // changed from \Throwable to \Exception
+            } catch (\Exception $e) {
                 $retryCount++;
 
                 if ($retryCount >= self::RETRY_LIMIT) {
@@ -90,10 +87,48 @@ class OAuthService
     }
 
     /**
+     * Generate a JWT for the assertion parameter
+     */
+    private function generateJWT()
+    {
+        $now = time();
+        $header = [
+            'alg' => 'RS256',
+            'typ' => 'JWT'
+        ];
+
+        $payload = [
+            'iss' => $this->config->getClientEmail(),
+            'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
+            'aud' => $this->config->get('token_uri'),
+            'iat' => $now,
+            'exp' => $now + 3600  // Token valid for 1 hour
+        ];
+
+        // Encode the header and payload
+        $base64UrlHeader = rtrim(strtr(base64_encode(json_encode($header)), '+/', '-_'), '=');
+        $base64UrlPayload = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
+
+        // Concatenate the header and payload
+        $unsignedToken = $base64UrlHeader . '.' . $base64UrlPayload;
+
+        // Sign the token using the private key
+        $privateKey = $this->config->getPrivateKey();
+        echo $privateKey;
+        openssl_sign($unsignedToken, $signature, $privateKey, OPENSSL_ALGO_SHA256);
+
+        // Base64Url encode the signature
+        $base64UrlSignature = rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
+
+        // Final JWT
+        return $unsignedToken . '.' . $base64UrlSignature;
+    }
+
+    /**
      * @return string
      */
     private function getEncryptionKey()
     {
-        return md5($this->config->getCredentials(true));
+        return md5($this->config->getClientEmail() . $this->config->getPrivateKey());
     }
 }
