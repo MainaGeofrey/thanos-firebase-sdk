@@ -1,0 +1,1 @@
+# Firebase Thanos PHP SDK
