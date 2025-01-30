@@ -14,7 +14,7 @@ final class Cached
     /**
      * @var integer
      */
-    private static $ttl = 86400;
+    private static $ttl = 3600;
 
     private static $cachePath = '';
 

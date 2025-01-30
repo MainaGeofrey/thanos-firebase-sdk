@@ -76,12 +76,25 @@ class PayloadResource
      */
     public function setPlatform(string $platform, array $platformData)
     {
+
         switch (strtolower($platform)) {
             case 'android':
                 $this->message['android'] = ['notification' => $platformData];
                 break;
-            case 'apple':
-                $this->message['apns'] = ['payload' => $platformData];
+            case 'ios':
+                //  echo json_encode($this->message);
+                $this->message['apns'] = [
+                    'payload' => [
+                        'aps' => [
+                            'alert' => [
+                                'title' => isset($this->message["notification"]['title']) ? $this->message["notification"]['title'] : "",
+                                'body' => isset($this->message["notification"]['body']) ? $this->message["notification"]['body'] : ""
+                            ],
+                            'sound' => isset($platformData['sound']) ? $platformData['sound'] : 'default',
+                            'click_action' => isset($platformData['click_action']) ? $platformData['click_action'] : 'OPEN_APP'
+                        ]
+                    ]
+                ];
                 break;
             case 'web':
                 $this->message['webpush'] = ['notification' => $platformData];
@@ -92,6 +105,7 @@ class PayloadResource
 
         return $this;
     }
+
 
     /**
      * Get the complete payload for sending to specific devices or topics

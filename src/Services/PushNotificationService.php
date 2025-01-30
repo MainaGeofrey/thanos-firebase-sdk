@@ -31,7 +31,6 @@ class PushNotificationService
      */
     public function sendNotification(string $url, array $payload)
     {
-        // Set the Authorization header with the access token
         $this->curl->setHeaders([
             'Authorization: Bearer ' . $this->accessToken,
             'Content-Type: application/json'

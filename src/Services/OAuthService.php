@@ -40,16 +40,16 @@ class OAuthService
 
         while ($retryCount < self::RETRY_LIMIT) {
             try {
+               // Cached::clearCache();
                 $token = Cached::get(function () {
                     $jwt = $this->generateJWT();
 
-                    // Prepare the payload with the JWT as the 'assertion' parameter
                     $payload = [
                         'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
                         'assertion' => $jwt
                     ];
 
-                    // Send the request to get the access token
+   
                     $response = $this->curl
                         ->setHeaders([])
                         ->post($this->config->get('token_uri'), http_build_query($payload));
@@ -114,7 +114,7 @@ class OAuthService
 
         // Sign the token using the private key
         $privateKey = $this->config->getPrivateKey();
-        echo $privateKey;
+       // echo $privateKey;
         openssl_sign($unsignedToken, $signature, $privateKey, OPENSSL_ALGO_SHA256);
 
         // Base64Url encode the signature
